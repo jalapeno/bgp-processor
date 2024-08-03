@@ -12,8 +12,19 @@ import (
 
 func (a *arangoDB) processBgpNode(ctx context.Context, key, id string, e message.PeerStateChange) error {
 	if e.RemoteASN == e.LocalASN {
-		glog.Infof("ibgp peer, no processing needed: %+v", e.Key)
-		return nil
+		glog.Infof("ibgp peer: %+v", e.Key)
+		obj := ibgpPeer{
+			Key:         e.RemoteBGPID + "_" + strconv.Itoa(int(e.RemoteASN)),
+			BGPRouterID: e.RemoteBGPID,
+			ASN:         int32(e.RemoteASN),
+		}
+
+		if _, err := a.ebgpPeer.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("create v4 peer: %+v", e.Key)
+			if !driver.IsConflict(err) {
+				return err
+			}
+		}
 	} else {
 
 		obj := ebgpPeer{
@@ -23,8 +34,7 @@ func (a *arangoDB) processBgpNode(ctx context.Context, key, id string, e message
 			AdvCapabilities: e.AdvCapabilities,
 		}
 
-		//if !strings.Contains(key, ":") {
-		if _, err := a.bgpNode.CreateDocument(ctx, &obj); err != nil {
+		if _, err := a.ebgpPeer.CreateDocument(ctx, &obj); err != nil {
 			glog.Infof("create v4 peer: %+v", e.Key)
 			if !driver.IsConflict(err) {
 				return err
@@ -67,7 +77,7 @@ func (a *arangoDB) processPeerSessionRemoval(ctx context.Context, key string, e 
 		if nm == 0 {
 
 			glog.Infof("last bgp session, removing bgp_node %+v", key)
-			query := "for d in bgp_node" +
+			query := "for d in ebgp_peer" +
 				" filter d.bgp_router_id == " + "\"" + rtrid + "\""
 			query += " remove d in bgp_node"
 			glog.Infof("query: %+v", query)
@@ -87,8 +97,8 @@ func (a *arangoDB) processPeerSessionRemoval(ctx context.Context, key string, e 
 					break
 				}
 				//if _, err := a.ebgpSessionV6.RemoveDocument(ctx, m.ID.Key()); err != nil {
-				if _, err := a.bgpNode.RemoveDocument(ctx, key); err != nil {
-					glog.Infof("remove v6 ebgp session: %+v, doc: %+v, session: %+v", key, m, a.bgpNode)
+				if _, err := a.ebgpPeer.RemoveDocument(ctx, key); err != nil {
+					glog.Infof("remove v6 ebgp session: %+v, doc: %+v, session: %+v", key, m, a.ebgpPeer)
 					if !driver.IsNotFound(err) {
 						return err
 					}

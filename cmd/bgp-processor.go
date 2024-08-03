@@ -33,7 +33,9 @@ var (
 	dbUser          string
 	dbPass          string
 	peer            string
-	bgpNode         string
+	ebgpPeer        string
+	ibgpPeer        string
+	asbr            string
 	unicastprefixV4 string
 	unicastprefixV6 string
 	ebgpprefixV4    string
@@ -44,20 +46,22 @@ var (
 
 func init() {
 	runtime.GOMAXPROCS(1)
-	// flag.StringVar(&msgSrvAddr, "message-server", "", "URL to the messages supplying server")
-	// flag.StringVar(&dbSrvAddr, "database-server", "", "{dns name}:port or X.X.X.X:port of the graph database")
-	// flag.StringVar(&dbName, "database-name", "", "DB name")
-	// flag.StringVar(&dbUser, "database-user", "", "DB User name")
-	// flag.StringVar(&dbPass, "database-pass", "", "DB User's password")
+	flag.StringVar(&msgSrvAddr, "message-server", "", "URL to the messages supplying server")
+	flag.StringVar(&dbSrvAddr, "database-server", "", "{dns name}:port or X.X.X.X:port of the graph database")
+	flag.StringVar(&dbName, "database-name", "", "DB name")
+	flag.StringVar(&dbUser, "database-user", "", "DB User name")
+	flag.StringVar(&dbPass, "database-pass", "", "DB User's password")
 
-	flag.StringVar(&msgSrvAddr, "message-server", "198.18.133.104:30092", "URL to the messages supplying server")
-	flag.StringVar(&dbSrvAddr, "database-server", "http://198.18.133.104:30852", "{dns name}:port or X.X.X.X:port of the graph database")
-	flag.StringVar(&dbName, "database-name", "jalapeno", "DB name")
-	flag.StringVar(&dbUser, "database-user", "root", "DB User name")
-	flag.StringVar(&dbPass, "database-pass", "jalapeno", "DB User's password")
+	// flag.StringVar(&msgSrvAddr, "message-server", "198.18.133.104:30092", "URL to the messages supplying server")
+	// flag.StringVar(&dbSrvAddr, "database-server", "http://198.18.133.104:30852", "{dns name}:port or X.X.X.X:port of the graph database")
+	// flag.StringVar(&dbName, "database-name", "jalapeno", "DB name")
+	// flag.StringVar(&dbUser, "database-user", "root", "DB User name")
+	// flag.StringVar(&dbPass, "database-pass", "jalapeno", "DB User's password")
 
 	flag.StringVar(&peer, "peer", "peer", "peer Collection name, default: \"peer\"")
-	flag.StringVar(&bgpNode, "bgp_node", "bgp_node", "bgp_node Collection name, default: \"bgp_node\"")
+	flag.StringVar(&ebgpPeer, "ebgp_peer", "ebgp_peer", "ebgp_peer Collection name, default: \"ebgp_peer\"")
+	flag.StringVar(&ibgpPeer, "ibgp_peer", "ibgp_peer", "ibgp_peer Collection name, default: \"ibgp_peer\"")
+	flag.StringVar(&asbr, "asbr", "asbr", "asbr Collection name, default: \"asbr\"")
 	flag.StringVar(&unicastprefixV4, "unicast_prefix_v4", "unicast_prefix_v4", "unicast_prefix_v4 Collection name, default: \"unicast_prefix_v4\"")
 	flag.StringVar(&unicastprefixV6, "unicast_prefix_v6", "unicast_prefix_v6", "unicast_prefix_v6 Collection name, default: \"unicast_prefix_v6\"")
 	flag.StringVar(&ebgpprefixV4, "ebgp_prefix_v4", "ebgp_prefix_v4", "ebgp_prefix_v4 Collection name, default: \"ebgp_prefix_v4\"")
@@ -98,7 +102,7 @@ func main() {
 		glog.Errorf("failed to validate the database credentials with error: %+v", err)
 		os.Exit(1)
 	}
-	dbSrv, err := arangodb.NewDBSrvClient(dbSrvAddr, dbUser, dbPass, dbName, peer, bgpNode,
+	dbSrv, err := arangodb.NewDBSrvClient(dbSrvAddr, dbUser, dbPass, dbName, peer, ebgpPeer, ibgpPeer, asbr,
 		unicastprefixV4, unicastprefixV6, ebgpprefixV4,
 		ebgpprefixV6, inetprefixV4, inetprefixV6)
 	if err != nil {
