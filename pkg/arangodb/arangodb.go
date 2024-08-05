@@ -312,10 +312,9 @@ func (a *arangoDB) loadCollection() error {
 	// Find and populate ibgp_peers
 	glog.Infof("copying unique ibgp peers into ibgp_peer collection")
 	ibgp_peer_query := "for l in ls_node for p in peer filter l.peer_asn == p.remote_asn " +
-		"filter p.remote_asn == p.local_asn insert { _key: p._key, router_id: p.remote_bgp_id, " +
-		"router_ip: p.remote_ip, asn: p.remote_asn, name: l.name, igp_router_id: l .igp_router_id, " +
-		"protocol: l.protocol, area_id: l.area_id, protocol_id: l.protocol_id  } " +
-		"INTO ibgp_peer OPTIONS { ignoreErrors: true }"
+		"filter p.remote_asn == p.local_asn insert { _key: CONCAT_SEPARATOR(" + "\"_\", p.remote_bgp_id, p.remote_asn), " +
+		"asn: p.remote_asn, name: l.name, igp_router_id: l .igp_router_id, protocol: l.protocol, area_id: l.area_id, " +
+		"protocol_id: l.protocol_id  } INTO ibgp_peer OPTIONS { ignoreErrors: true }"
 	cursor, err := a.db.Query(ctx, ibgp_peer_query, nil)
 	if err != nil {
 		return err
@@ -325,15 +324,15 @@ func (a *arangoDB) loadCollection() error {
 	// Find and populate ebgp_peers
 	glog.Infof("copying unique ebgp peers into ebgp_peer collection")
 	ebgp_peer_query := "for p in peer let internal_asns = ( for l in ls_node return l.peer_asn ) " +
-		"filter p.remote_asn not in internal_asns insert { _key: p._key, router_id: p.remote_bgp_id, " +
-		"router_ip: p.remote_ip, asn: p.remote_asn  } INTO ebgp_peer OPTIONS { ignoreErrors: true }"
+		"filter p.remote_asn not in internal_asns insert { _key: CONCAT_SEPARATOR(" + "\"_\", p.remote_bgp_id, p.remote_asn), " +
+		"router_id: p.remote_bgp_id, asn: p.remote_asn  } INTO ebgp_peer OPTIONS { ignoreErrors: true }"
 	cursor, err = a.db.Query(ctx, ebgp_peer_query, nil)
 	if err != nil {
 		return err
 	}
 	defer cursor.Close()
 
-	glog.Infof("copying unicast v4 prefixes into non-Internet ebgp_prefix_v4 collection")
+	glog.Infof("copying private ASN unicast v4 prefixes into non-Internet ebgp_prefix_v4 collection")
 	ebgp4_query := "for l in unicast_prefix_v4 filter l.origin_as in 64512..65535 filter l.prefix_len < 26 filter l.prefix_len != null " +
 		"filter l.remote_asn != l.origin_as filter l.base_attrs.local_pref == null " +
 		"INSERT { _key: CONCAT_SEPARATOR(" + "\"_\", l.prefix, l.prefix_len), prefix: l.prefix, prefix_len: l.prefix_len, " +
@@ -344,7 +343,7 @@ func (a *arangoDB) loadCollection() error {
 	}
 	defer cursor.Close()
 
-	glog.Infof("copying unicast v4 prefixes into inet_prefix_v4 collection")
+	glog.Infof("copying public ASN unicast v4 prefixes into inet_prefix_v4 collection")
 	inet4_query := "for u in unicast_prefix_v4 let internal_asns = ( for l in ls_node return l.peer_asn ) " +
 		"filter u.peer_asn not in internal_asns filter u.peer_asn !in 64512..65535 filter u.prefix_len < 26 " +
 		"filter u.remote_asn != u.origin_as INSERT { _key: CONCAT_SEPARATOR(" + "\"_\", u.prefix, u.prefix_len)," +
@@ -356,7 +355,7 @@ func (a *arangoDB) loadCollection() error {
 	}
 	defer cursor.Close()
 
-	glog.Infof("copying ebgp unicast v6 prefixes into ebgp_prefix_v6 collection")
+	glog.Infof("copying private ASN ebgp unicast v6 prefixes into ebgp_prefix_v6 collection")
 	ebgp6_query := "for l in unicast_prefix_v6 filter l.origin_as in 64512..65535 filter l.prefix_len < 96 filter l.prefix_len != null " +
 		"filter l.remote_asn != l.origin_as filter l.base_attrs.local_pref == null " +
 		"INSERT { _key: CONCAT_SEPARATOR(" + "\"_\", l.prefix, l.prefix_len), prefix: l.prefix, prefix_len: l.prefix_len, " +
@@ -367,7 +366,7 @@ func (a *arangoDB) loadCollection() error {
 	}
 	defer cursor.Close()
 
-	glog.Infof("copying internet unicast v6 prefixes into inet_prefix_v6 collection")
+	glog.Infof("copying public ASN unicast v6 prefixes into inet_prefix_v6 collection")
 	inet6_query := "for u in unicast_prefix_v6 let internal_asns = ( for l in ls_node return l.peer_asn ) " +
 		"filter u.peer_asn not in internal_asns filter u.peer_asn !in 64512..65535 filter u.origin_as !in 64512..65535 filter u.prefix_len < 96 " +
 		"filter u.remote_asn != u.origin_as INSERT { _key: CONCAT_SEPARATOR(" + "\"_\", u.prefix, u.prefix_len)," +

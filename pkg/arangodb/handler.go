@@ -78,14 +78,14 @@ func (a *arangoDB) unicastV4Handler(obj *notifier.EventMessage) error {
 		if obj.Action != "del" {
 			return fmt.Errorf("document %s not found but Action is not \"del\", possible stale event", obj.Key)
 		}
-		return a.processInet4Removal(ctx, obj.Key, &o)
+		return a.processV4Removal(ctx, obj.Key, &o)
 	}
 	switch obj.Action {
 	case "add":
 		fallthrough
 	case "update":
 		//glog.Infof("passing to processInet: %+v", o)
-		if err := a.processInet4(ctx, obj.Key, obj.ID, o); err != nil {
+		if err := a.processV4Prefix(ctx, obj.Key, obj.ID, o); err != nil {
 			return fmt.Errorf("failed to process action %s for vertex %s with error: %+v", obj.Action, obj.Key, err)
 		}
 	default:
@@ -115,13 +115,13 @@ func (a *arangoDB) unicastV6Handler(obj *notifier.EventMessage) error {
 		if obj.Action != "del" {
 			return fmt.Errorf("document %s not found but Action is not \"del\", possible stale event", obj.Key)
 		}
-		return a.processInet6Removal(ctx, obj.Key, &o)
+		return a.processV6Removal(ctx, obj.Key, &o)
 	}
 	switch obj.Action {
 	case "add":
 		fallthrough
 	case "update":
-		if err := a.processInet6(ctx, obj.Key, obj.ID, o); err != nil {
+		if err := a.processV6Prefix(ctx, obj.Key, obj.ID, o); err != nil {
 			return fmt.Errorf("failed to process action %s for vertex %s with error: %+v", obj.Action, obj.Key, err)
 		}
 	default:

@@ -14,13 +14,14 @@ func (a *arangoDB) processBgpNode(ctx context.Context, key, id string, e message
 	if e.RemoteASN == e.LocalASN {
 		glog.Infof("ibgp peer: %+v", e.Key)
 		obj := ibgpPeer{
-			Key:         e.RemoteBGPID + "_" + strconv.Itoa(int(e.RemoteASN)),
-			BGPRouterID: e.RemoteBGPID,
-			ASN:         int32(e.RemoteASN),
+			Key:             e.RemoteBGPID + "_" + strconv.Itoa(int(e.RemoteASN)),
+			BGPRouterID:     e.RemoteBGPID,
+			ASN:             int32(e.RemoteASN),
+			AdvCapabilities: e.AdvCapabilities,
 		}
 
-		if _, err := a.ebgpPeer.CreateDocument(ctx, &obj); err != nil {
-			glog.Infof("create v4 peer: %+v", e.Key)
+		if _, err := a.ibgpPeer.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("create iBGP peer: %+v", e.Key)
 			if !driver.IsConflict(err) {
 				return err
 			}
@@ -35,7 +36,7 @@ func (a *arangoDB) processBgpNode(ctx context.Context, key, id string, e message
 		}
 
 		if _, err := a.ebgpPeer.CreateDocument(ctx, &obj); err != nil {
-			glog.Infof("create v4 peer: %+v", e.Key)
+			glog.Infof("create eBGP peer: %+v", e.RemoteBGPID+"_"+strconv.Itoa(int(e.RemoteASN)))
 			if !driver.IsConflict(err) {
 				return err
 			}
@@ -111,14 +112,14 @@ func (a *arangoDB) processPeerSessionRemoval(ctx context.Context, key string, e 
 	return nil
 }
 
-func (a *arangoDB) processInet4(ctx context.Context, key, id string, e message.UnicastPrefix) error {
+func (a *arangoDB) processV4Prefix(ctx context.Context, key, id string, e message.UnicastPrefix) error {
 	// get internal ASN so we can determine whether this is an external prefix or not
-	getasn := "for l in ls_node_extended limit 1 return l"
+	getasn := "for l in igp_domain return l.asn"
 	cursor, err := a.db.Query(ctx, getasn, nil)
 	if err != nil {
 		return err
 	}
-	var ln LSNodeExt
+	var ln InternalASNs
 	lm, err := cursor.ReadDocument(ctx, &ln)
 	glog.V(5).Infof("meta %+v", lm)
 	if err != nil {
@@ -126,23 +127,16 @@ func (a *arangoDB) processInet4(ctx context.Context, key, id string, e message.U
 			return err
 		}
 	}
-
 	var result bool = false
-	for _, x := range e.BaseAttributes.ASPath {
-		if x == uint32(ln.ASN) {
+	for _, x := range ln.asnlist {
+		if e.OriginAS == (int32(x)) {
 			result = true
 			break
 		}
 	}
 	if result {
-		glog.V(5).Infof("internal ASN %+v found in unicast prefix, do not process", e.Prefix)
-	}
+		glog.Infof("internal ASN %+v found in unicast prefix message, process as non-Inet prefix", e.Prefix)
 
-	if e.OriginAS == ln.ASN {
-		glog.V(5).Infof("internal prefix, do not process: %+v, origin_as: %+v, ln.ASN: %+v", e.Prefix, e.OriginAS, ln.ASN)
-		return a.processInet4Removal(ctx, key, &e)
-
-	} else {
 		obj := inetPrefix{
 			//Key: inetKey,
 			Key:       e.Prefix + "_" + strconv.Itoa(int(e.PrefixLen)),
@@ -151,43 +145,57 @@ func (a *arangoDB) processInet4(ctx context.Context, key, id string, e message.U
 			OriginAS:  e.OriginAS,
 			NextHop:   e.Nexthop,
 		}
-		if _, err := a.inetprefixV4.CreateDocument(ctx, &obj); err != nil {
-			//glog.Infof("adding prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
+		if _, err := a.ebgpprefixV4.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("adding non-Inet prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
 			if !driver.IsConflict(err) {
 				return nil
 			}
 		}
-		// The document already exists, updating it with the latest info
-		if _, err := a.inetprefixV4.UpdateDocument(ctx, ln.Key, &obj); err != nil {
+
+	} else {
+		obj := inetPrefix{
+			Key:       e.Prefix + "_" + strconv.Itoa(int(e.PrefixLen)),
+			Prefix:    e.Prefix,
+			PrefixLen: e.PrefixLen,
+			OriginAS:  e.OriginAS,
+			NextHop:   e.Nexthop,
+		}
+		if _, err := a.inetprefixV4.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("adding Inet prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
 			if !driver.IsConflict(err) {
 				return nil
 			}
 		}
 	}
+
 	return nil
 }
 
-func (a *arangoDB) processebgp4(ctx context.Context, key, id string, e message.UnicastPrefix) error {
+func (a *arangoDB) processV6Prefix(ctx context.Context, key, id string, e message.UnicastPrefix) error {
 	// get internal ASN so we can determine whether this is an external prefix or not
-	getasn := "for l in ls_node_extended limit 1 return l"
+	getasn := "for l in igp_domain return l.asn"
 	cursor, err := a.db.Query(ctx, getasn, nil)
 	if err != nil {
 		return err
 	}
-	var ln LSNodeExt
+	var ln InternalASNs
 	lm, err := cursor.ReadDocument(ctx, &ln)
-	glog.Infof("meta %+v", lm)
+	glog.V(5).Infof("meta %+v", lm)
 	if err != nil {
 		if !driver.IsNoMoreDocuments(err) {
 			return err
 		}
 	}
+	var result bool = false
+	for _, x := range ln.asnlist {
+		if e.OriginAS == (int32(x)) {
+			result = true
+			break
+		}
+	}
+	if result {
+		glog.Infof("internal ASN %+v found in unicast prefix message, process as non-Inet prefix", e.Prefix)
 
-	if e.OriginAS == ln.ASN {
-		glog.V(5).Infof("internal prefix, do not process: %+v, origin_as: %+v, ln.ASN: %+v", e.Prefix, e.OriginAS, ln.ASN)
-		return a.processInet4Removal(ctx, key, &e)
-
-	} else {
 		obj := inetPrefix{
 			//Key: inetKey,
 			Key:       e.Prefix + "_" + strconv.Itoa(int(e.PrefixLen)),
@@ -196,14 +204,23 @@ func (a *arangoDB) processebgp4(ctx context.Context, key, id string, e message.U
 			OriginAS:  e.OriginAS,
 			NextHop:   e.Nexthop,
 		}
-		if _, err := a.inetprefixV4.CreateDocument(ctx, &obj); err != nil {
-			//glog.Infof("adding prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
+		if _, err := a.ebgpprefixV6.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("adding non-Inet prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
 			if !driver.IsConflict(err) {
 				return nil
 			}
 		}
-		// The document already exists, updating it with the latest info
-		if _, err := a.inetprefixV4.UpdateDocument(ctx, ln.Key, &obj); err != nil {
+
+	} else {
+		obj := inetPrefix{
+			Key:       e.Prefix + "_" + strconv.Itoa(int(e.PrefixLen)),
+			Prefix:    e.Prefix,
+			PrefixLen: e.PrefixLen,
+			OriginAS:  e.OriginAS,
+			NextHop:   e.Nexthop,
+		}
+		if _, err := a.inetprefixV6.CreateDocument(ctx, &obj); err != nil {
+			glog.Infof("adding Inet prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
 			if !driver.IsConflict(err) {
 				return nil
 			}
@@ -213,7 +230,7 @@ func (a *arangoDB) processebgp4(ctx context.Context, key, id string, e message.U
 }
 
 // process Removal removes records from the inetprefixV4 collection
-func (a *arangoDB) processInet4Removal(ctx context.Context, key string, e *message.UnicastPrefix) error {
+func (a *arangoDB) processV4Removal(ctx context.Context, key string, e *message.UnicastPrefix) error {
 	query := "for d in " + a.inetprefixV4.Name() +
 		" filter d.prefix == " + "\"" + e.Prefix + "\""
 	query += " return d"
@@ -241,69 +258,8 @@ func (a *arangoDB) processInet4Removal(ctx context.Context, key string, e *messa
 	return nil
 }
 
-func (a *arangoDB) processInet6(ctx context.Context, key, id string, e message.UnicastPrefix) error {
-	// get internal ASN so we can determine whether this is an external prefix or not
-	getasn := "for l in ls_node_extended limit 1 return l"
-	cursor, err := a.db.Query(ctx, getasn, nil)
-	if err != nil {
-		return err
-	}
-
-	var ln LSNodeExt
-	lm, err := cursor.ReadDocument(ctx, &ln)
-	glog.V(5).Infof("meta %+v", lm)
-	if err != nil {
-		if !driver.IsNoMoreDocuments(err) {
-			return err
-		}
-	}
-
-	var result bool = false
-	for _, x := range e.BaseAttributes.ASPath {
-		if x == uint32(ln.ASN) {
-			result = true
-			break
-		}
-	}
-	if result {
-		glog.V(5).Infof("internal ASN %+v found in unicast prefix, do not process", e.Prefix)
-	}
-
-	//glog.Infof("got message %+v", &e)
-	if e.OriginAS == ln.ASN {
-		//glog.Infof("internal prefix, do not process: %+v, origin_as: %+v, ln.ASN: %+v", e.Prefix, e.OriginAS, ln.ASN)
-		return a.processInet6Removal(ctx, key, &e)
-	}
-	if e.OriginAS == 0 {
-		//glog.Infof("internal prefix, do not process: %+v, origin_as: %+v, ln.ASN: %+v", e.Prefix, e.OriginAS, ln.ASN)
-		return a.processInet4Removal(ctx, key, &e)
-
-	} else {
-		obj := inetPrefix{
-			Key:       e.Prefix + "_" + strconv.Itoa(int(e.PrefixLen)),
-			Prefix:    e.Prefix,
-			PrefixLen: e.PrefixLen,
-			OriginAS:  e.OriginAS,
-			NextHop:   e.Nexthop,
-		}
-		if _, err := a.inetprefixV6.CreateDocument(ctx, &obj); err != nil {
-			//glog.Infof("adding prefix: %+v", e.Prefix+"_"+strconv.Itoa(int(e.PrefixLen)))
-			if !driver.IsConflict(err) {
-				return nil
-			}
-		}
-		// The document already exists, updating it with the latest info
-		if _, err := a.inetprefixV6.UpdateDocument(ctx, ln.Key, &obj); err != nil {
-			if !driver.IsConflict(err) {
-				return nil
-			}
-		}
-	}
-	return nil
-}
-
 // process Removal removes records from the inetprefixV4 collection
-func (a *arangoDB) processInet6Removal(ctx context.Context, key string, e *message.UnicastPrefix) error {
+func (a *arangoDB) processV6Removal(ctx context.Context, key string, e *message.UnicastPrefix) error {
 	query := "for d in " + a.inetprefixV6.Name() +
 		" filter d._key == " + "\"" + key + "\""
 	query += " return d"

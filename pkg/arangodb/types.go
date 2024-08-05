@@ -8,8 +8,12 @@ import (
 	"github.com/sbezverk/gobmp/pkg/srv6"
 )
 
-type asnlist struct {
-	asnlist []string `json:"asn_list"`
+// type asnlist struct {
+// 	asnlist []string `json:"asn_list"`
+// }
+
+type InternalASNs struct {
+	asnlist []uint32 `json:"asn_list"`
 }
 
 type inetPrefix struct {
@@ -69,15 +73,16 @@ type ebgpPeer struct {
 }
 
 type ibgpPeer struct {
-	Key         string       `json:"_key,omitempty"`
-	ID          string       `json:"_id,omitempty"`
-	BGPRouterID string       `json:"router_id,omitempty"`
-	ASN         int32        `json:"asn"`
-	Name        string       `json:"name"`
-	IGPRouterID string       `json:"igp_router_id,omitempty"`
-	AreaID      string       `json:"area_id"`
-	Protocol    string       `json:"protocol,omitempty"`
-	ProtocolID  base.ProtoID `json:"protocol_id,omitempty"`
+	Key             string         `json:"_key,omitempty"`
+	ID              string         `json:"_id,omitempty"`
+	BGPRouterID     string         `json:"router_id,omitempty"`
+	ASN             int32          `json:"asn"`
+	AdvCapabilities bgp.Capability `json:"adv_cap,omitempty"`
+	Name            string         `json:"name"`
+	IGPRouterID     string         `json:"igp_router_id,omitempty"`
+	AreaID          string         `json:"area_id"`
+	Protocol        string         `json:"protocol,omitempty"`
+	ProtocolID      base.ProtoID   `json:"protocol_id,omitempty"`
 }
 
 type (
