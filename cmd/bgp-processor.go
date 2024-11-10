@@ -9,8 +9,8 @@ import (
 	"runtime"
 
 	"github.com/golang/glog"
-	"www.github.com/jalapeno/bgp-processor/pkg/arangodb"
-	"www.github.com/jalapeno/bgp-processor/pkg/kafkamessenger"
+	"github.com/jalapeno/bgp-processor/pkg/arangodb"
+	"github.com/jalapeno/bgp-processor/pkg/kafkamessenger"
 
 	_ "net/http/pprof"
 )
